@@ -85,5 +85,23 @@
       },
       "enabled": true
     }
+    ,{
+      "id": "binding_mouse_track",
+      "gesture_id": "mouse_track",
+      "action_id": "mouse.move",
+      "action_params": {},
+      "trigger": "on_hold",
+      "min_confidence": 0.8,
+      "stable_for_ms": 0,
+      "cooldown_ms": 0,
+      "confirmation": {
+        "type": "none",
+        "timeout_ms": 1500,
+        "hold_ms": 700,
+        "second_gesture_id": null
+      },
+      "enabled": true,
+      "exclusive": true
+    }
   ]
 }

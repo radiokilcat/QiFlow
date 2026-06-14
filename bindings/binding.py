@@ -18,6 +18,7 @@ class Binding(BaseModel):
     cooldown_ms: int = 500
     confirmation: ConfirmationPolicy = ConfirmationPolicy()
     enabled: bool = True
+    exclusive: bool = False  # while active, all other bindings are suppressed
 
     @field_validator("min_confidence")
     @classmethod

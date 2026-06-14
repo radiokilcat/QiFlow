@@ -1,6 +1,16 @@
 from __future__ import annotations
-from typing import Literal, Type
+import ctypes
+import functools
+from typing import Any, Literal, Type
 from .base import Action, ActionParams, ActionContext, RiskLevel
+
+
+@functools.lru_cache(maxsize=1)
+def _screen_size() -> tuple[int, int]:
+    return (
+        ctypes.windll.user32.GetSystemMetrics(0),
+        ctypes.windll.user32.GetSystemMetrics(1),
+    )
 
 
 class MouseClickParams(ActionParams):
@@ -17,7 +27,7 @@ class MouseClickAction(Action):
     def preview(self, params: MouseClickParams) -> str:
         return f"Click {params.button} mouse button"
 
-    def execute(self, params: MouseClickParams, context: ActionContext) -> None:
+    def execute(self, params: MouseClickParams, context: ActionContext, event_payload: dict = {}) -> None:
         context.os_adapter.click_mouse(params.button)
 
 
@@ -36,5 +46,26 @@ class MouseScrollAction(Action):
         direction = "up" if params.delta > 0 else "down"
         return f"Scroll {direction} by {abs(params.delta)}"
 
-    def execute(self, params: MouseScrollParams, context: ActionContext) -> None:
+    def execute(self, params: MouseScrollParams, context: ActionContext, event_payload: dict = {}) -> None:
         context.os_adapter.scroll(params.delta)
+
+
+class MouseMoveParams(ActionParams):
+    pass  # coordinates come from event_payload at runtime
+
+
+class MouseMoveAction(Action):
+    action_id = "mouse.move"
+    name = "Mouse Move"
+    description = "Move mouse cursor to index finger position"
+    risk_level: RiskLevel = "low"
+    params_model: Type[MouseMoveParams] = MouseMoveParams
+
+    def preview(self, params: MouseMoveParams) -> str:
+        return "Move mouse to right index finger tip"
+
+    def execute(self, params: MouseMoveParams, context: ActionContext, event_payload: dict = {}) -> None:
+        x_norm = float(event_payload.get("x", 0.5))
+        y_norm = float(event_payload.get("y", 0.5))
+        w, h = _screen_size()
+        context.os_adapter.move_mouse(int(x_norm * w), int(y_norm * h))

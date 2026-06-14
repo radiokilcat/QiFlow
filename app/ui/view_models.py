@@ -14,7 +14,7 @@ class OverlayMessage:
 @dataclass
 class FramePacket:
     """Payload sent from CameraWorker to the main thread each frame."""
-    frame: Any          # np.ndarray BGR uint8
+    texture_data: Any   # np.ndarray float32 RGBA flat, ready for dpg.set_value
     timestamp_ms: int
     gesture_id: str | None = None
     confidence: float = 0.0

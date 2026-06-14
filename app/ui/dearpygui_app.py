@@ -3,8 +3,8 @@ import time
 from queue import Queue, Empty
 from typing import Callable, Any
 
-import dearpygui.dearpygui as dpg
 import numpy as np
+import dearpygui.dearpygui as dpg
 
 from gestures.base import GestureEvent
 from .view_models import FramePacket, OverlayMessage, ActionLogEntry
@@ -469,10 +469,7 @@ class DearPyGuiApp:
         except Empty:
             return
 
-        import cv2
-        frame_small = cv2.resize(packet.frame, (_CAMERA_W, _CAMERA_H))
-        rgba = cv2.cvtColor(frame_small, cv2.COLOR_BGR2RGBA).astype(np.float32) / 255.0
-        dpg.set_value(_TEXTURE_TAG, rgba.ravel())
+        dpg.set_value(_TEXTURE_TAG, packet.texture_data)
 
         if packet.gesture_id:
             dpg.set_value("lbl_gesture_id", packet.gesture_id)

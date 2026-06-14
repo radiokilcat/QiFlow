@@ -14,7 +14,12 @@ class ActionDispatcher:
         params = action.params_model.model_validate(raw_params)
         return action.preview(params)
 
-    def execute(self, action_id: str, raw_params: dict[str, Any]) -> None:
+    def execute(
+        self,
+        action_id: str,
+        raw_params: dict[str, Any],
+        event_payload: dict[str, Any] | None = None,
+    ) -> None:
         action = self._registry.get(action_id)
         params = action.params_model.model_validate(raw_params)
-        action.execute(params, self._context)
+        action.execute(params, self._context, event_payload or {})

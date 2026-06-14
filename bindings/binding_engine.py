@@ -31,12 +31,26 @@ class BindingEngine:
         self._confirmation = confirmation_manager
         self._overlay = overlay
         self._cooldowns: dict[str, float] = {}
+        self._active_exclusive: set[str] = set()  # gesture_ids of active exclusive bindings
 
     def process(self, event: GestureEvent) -> None:
         self._confirmation.feed_gesture(event)
         self._confirmation.tick()
 
+        # Track exclusive gesture lifecycle
+        if any(b.exclusive and b.gesture_id == event.gesture_id for b in self._store.all()):
+            if event.phase in ("started", "updated"):
+                self._active_exclusive.add(event.gesture_id)
+            elif event.phase == "ended":
+                self._active_exclusive.discard(event.gesture_id)
+
         for binding in self._store.all():
+            # While an exclusive gesture is active, suppress all non-exclusive bindings
+            if self._active_exclusive and not (
+                binding.exclusive and binding.gesture_id in self._active_exclusive
+            ):
+                continue
+
             if not self._matches(binding, event):
                 continue
 
@@ -51,13 +65,13 @@ class BindingEngine:
                 pending._gesture_id_hint = event.gesture_id
                 continue
 
-            def make_confirm_cb(b: Binding) -> Any:
+            def make_confirm_cb(b: Binding, payload: dict) -> Any:
                 def cb() -> None:
-                    self._dispatcher.execute(b.action_id, b.action_params)
+                    self._dispatcher.execute(b.action_id, b.action_params, event_payload=payload)
                     self._cooldowns[b.id] = time.monotonic() + b.cooldown_ms / 1000.0
                 return cb
 
-            confirm = make_confirm_cb(binding)
+            confirm = make_confirm_cb(binding, event.payload)
             p = self._confirmation._pending.get(binding.id)
             if p is not None:
                 p._gesture_id_hint = event.gesture_id

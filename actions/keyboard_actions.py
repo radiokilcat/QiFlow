@@ -35,5 +35,5 @@ class KeyboardHotkeyAction(Action):
         danger = " [DANGEROUS]" if self._is_dangerous(params.keys) else ""
         return f"Press hotkey: {combo}{danger}"
 
-    def execute(self, params: HotkeyParams, context: ActionContext) -> None:
+    def execute(self, params: HotkeyParams, context: ActionContext, event_payload: dict = {}) -> None:
         context.os_adapter.press_hotkey(params.keys)

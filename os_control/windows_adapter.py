@@ -25,7 +25,8 @@ class WindowsAdapter(OSAdapter):
         print(f"[OS] press_hotkey({combo!r})")
 
     def move_mouse(self, x: int, y: int) -> None:
-        print(f"[OS] move_mouse(x={x}, y={y})")
+        import ctypes
+        ctypes.windll.user32.SetCursorPos(x, y)
 
     def click_mouse(self, button: str) -> None:
         print(f"[OS] click_mouse(button={button!r})")

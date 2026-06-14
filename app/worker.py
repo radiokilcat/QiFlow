@@ -3,18 +3,26 @@ import threading
 import time
 from queue import Queue, Full
 
+import cv2
+import numpy as np
+
 from gestures.registry import GestureRegistry
 from gestures.base import GestureEvent
 from app.ui.view_models import FramePacket
+
+_TARGET_FPS = 30
+_FRAME_INTERVAL = 1.0 / _TARGET_FPS
+_DISPLAY_W, _DISPLAY_H = 640, 360   # texture size for DearPyGui
+_DETECT_W, _DETECT_H = 320, 240     # resolution passed to MediaPipe
 
 
 class CameraWorker(threading.Thread):
     """
     Worker thread: camera capture → MediaPipe detection → GestureRecognizers → queues.
 
-    Runs on a daemon thread separate from the main (UI) thread.
-    Puts only the latest frame into frame_queue (maxsize=1, old frames replaced).
-    Puts GestureEvents into gesture_queue (maxsize=32, drops if full).
+    Detection runs at _DETECT_W×_DETECT_H to keep MediaPipe fast.
+    The display frame is pre-converted to float32 RGBA here so the UI thread
+    only calls dpg.set_value() without any heavy image work.
     """
 
     def __init__(
@@ -37,7 +45,6 @@ class CameraWorker(threading.Thread):
         self._stop_event.set()
 
     def run(self) -> None:
-        import cv2
         from vision.mediapipe_detector import LandmarkDetector
         from vision.drawing import draw_hand_landmarks
 
@@ -49,8 +56,8 @@ class CameraWorker(threading.Thread):
             return
 
         cap = cv2.VideoCapture(self._camera_index, cv2.CAP_DSHOW)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
         if not cap.isOpened():
             print(f"[CameraWorker] Cannot open camera {self._camera_index}")
@@ -61,6 +68,8 @@ class CameraWorker(threading.Thread):
 
         try:
             while not self._stop_event.is_set():
+                t0 = time.monotonic()
+
                 ret, frame = cap.read()
                 if not ret:
                     time.sleep(0.01)
@@ -69,39 +78,52 @@ class CameraWorker(threading.Thread):
                 frame = cv2.flip(frame, 1)
                 timestamp_ms = int((time.monotonic() - start_time) * 1000)
 
-                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                # Detect at reduced resolution — much faster than full-res
+                small = cv2.resize(frame, (_DETECT_W, _DETECT_H))
+                rgb_small = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
                 try:
-                    hand_landmarks_list = detector.detect(rgb, timestamp_ms)
+                    hand_landmarks_list = detector.detect(rgb_small, timestamp_ms)
                 except Exception:
                     hand_landmarks_list = []
 
                 if hand_landmarks_list:
                     draw_hand_landmarks(frame, hand_landmarks_list)
 
+                # Pre-process display frame here, off the main thread
+                display = cv2.resize(frame, (_DISPLAY_W, _DISPLAY_H))
+                rgba = cv2.cvtColor(display, cv2.COLOR_BGR2RGBA).astype(np.float32) / 255.0
+                texture_data = rgba.ravel()
+
                 frame_time = time.monotonic()
                 latest_gesture_id: str | None = None
                 latest_confidence: float = 0.0
 
                 for recognizer in self._gesture_registry.all():
-                    for hand_lm in hand_landmarks_list:
-                        event = recognizer.process(hand_lm, frame_time)
-                        if event is not None:
-                            latest_gesture_id = event.gesture_id
-                            latest_confidence = event.confidence
-                            try:
-                                self._gesture_queue.put_nowait(event)
-                            except Full:
-                                pass
+                    if recognizer.is_multi_hand:
+                        events = recognizer.process_all(hand_landmarks_list, frame_time)
+                    else:
+                        events = [
+                            e for hand_lm in hand_landmarks_list
+                            if (e := recognizer.process(hand_lm, frame_time)) is not None
+                        ]
+
+                    for event in events:
+                        latest_gesture_id = event.gesture_id
+                        latest_confidence = event.confidence
+                        try:
+                            self._gesture_queue.put_nowait(event)
+                        except Full:
+                            pass
 
                 packet = FramePacket(
-                    frame=frame,
+                    texture_data=texture_data,
                     timestamp_ms=timestamp_ms,
                     gesture_id=latest_gesture_id,
                     confidence=latest_confidence,
                     has_hands=bool(hand_landmarks_list),
                 )
 
-                # Replace stale frame: drain first so maxsize=1 never blocks
+                # Replace stale frame — drain first so maxsize=1 never blocks
                 try:
                     self._frame_queue.get_nowait()
                 except Exception:
@@ -110,6 +132,11 @@ class CameraWorker(threading.Thread):
                     self._frame_queue.put_nowait(packet)
                 except Full:
                     pass
+
+                # FPS cap — sleep the remaining time in the frame interval
+                elapsed = time.monotonic() - t0
+                if elapsed < _FRAME_INTERVAL:
+                    time.sleep(_FRAME_INTERVAL - elapsed)
 
         finally:
             cap.release()

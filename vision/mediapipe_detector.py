@@ -32,7 +32,10 @@ class LandmarkDetector:
         import mediapipe as mp
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
         result = self._landmarker.detect_for_video(mp_image, timestamp_ms)
-        return [
-            HandLandmarks.from_mediapipe(hand)
-            for hand in (result.hand_landmarks or [])
-        ]
+        hands = []
+        for i, hand in enumerate(result.hand_landmarks or []):
+            handedness = ""
+            if result.handedness and i < len(result.handedness):
+                handedness = result.handedness[i][0].category_name
+            hands.append(HandLandmarks.from_mediapipe(hand, handedness))
+        return hands

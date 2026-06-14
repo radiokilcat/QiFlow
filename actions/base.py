@@ -32,6 +32,11 @@ class Action(ABC):
         ...
 
     @abstractmethod
-    def execute(self, params: ActionParams, context: ActionContext) -> None:
+    def execute(
+        self,
+        params: ActionParams,
+        context: ActionContext,
+        event_payload: dict = {},
+    ) -> None:
         """Execute the action using the OS adapter from context."""
         ...

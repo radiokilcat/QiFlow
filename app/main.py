@@ -12,7 +12,7 @@ from actions.window_actions import (
     WindowMinimizeAction, WindowMaximizeAction,
 )
 from actions.keyboard_actions import KeyboardHotkeyAction
-from actions.mouse_actions import MouseClickAction, MouseScrollAction
+from actions.mouse_actions import MouseClickAction, MouseScrollAction, MouseMoveAction
 from actions.system_actions import VolumeChangeAction
 
 from gestures.registry import GestureRegistry
@@ -20,6 +20,7 @@ from gestures.recognizers.open_palm import OpenPalmRecognizer
 from gestures.recognizers.fist import FistRecognizer
 from gestures.recognizers.pinch import PinchRecognizer
 from gestures.recognizers.swipe import SwipeLeftRecognizer, SwipeRightRecognizer
+from gestures.recognizers.mouse_track import MouseTrackRecognizer
 from gestures.base import GestureEvent
 
 from bindings.binding_store import BindingStore
@@ -44,6 +45,7 @@ def build_action_registry() -> ActionRegistry:
         KeyboardHotkeyAction(),
         MouseClickAction(),
         MouseScrollAction(),
+        MouseMoveAction(),
         VolumeChangeAction(),
     ]:
         registry.register(action)
@@ -58,6 +60,7 @@ def build_gesture_registry() -> GestureRegistry:
         PinchRecognizer(),
         SwipeLeftRecognizer(),
         SwipeRightRecognizer(),
+        MouseTrackRecognizer(),
     ]:
         registry.register(recognizer)
     return registry

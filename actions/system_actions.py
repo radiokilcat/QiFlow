@@ -18,5 +18,5 @@ class VolumeChangeAction(Action):
         direction = "up" if params.delta > 0 else "down"
         return f"Volume {direction} by {abs(params.delta)}"
 
-    def execute(self, params: VolumeChangeParams, context: ActionContext) -> None:
+    def execute(self, params: VolumeChangeParams, context: ActionContext, event_payload: dict = {}) -> None:
         context.os_adapter.change_volume(params.delta)

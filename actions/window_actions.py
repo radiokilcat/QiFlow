@@ -18,7 +18,7 @@ class WindowSwitchAction(Action):
     def preview(self, params: WindowSwitchParams) -> str:
         return f"Switch to {params.direction} window"
 
-    def execute(self, params: WindowSwitchParams, context: ActionContext) -> None:
+    def execute(self, params: WindowSwitchParams, context: ActionContext, event_payload: dict = {}) -> None:
         context.os_adapter.switch_window(params.direction)
 
 
@@ -36,7 +36,7 @@ class WindowCloseAction(Action):
     def preview(self, params: WindowCloseParams) -> str:
         return "Close the active window"
 
-    def execute(self, params: WindowCloseParams, context: ActionContext) -> None:
+    def execute(self, params: WindowCloseParams, context: ActionContext, event_payload: dict = {}) -> None:
         context.os_adapter.close_active_window()
 
 
@@ -54,7 +54,7 @@ class WindowMinimizeAction(Action):
     def preview(self, params: WindowMinimizeParams) -> str:
         return "Minimize the active window"
 
-    def execute(self, params: WindowMinimizeParams, context: ActionContext) -> None:
+    def execute(self, params: WindowMinimizeParams, context: ActionContext, event_payload: dict = {}) -> None:
         context.os_adapter.minimize_active_window()
 
 
@@ -72,5 +72,5 @@ class WindowMaximizeAction(Action):
     def preview(self, params: WindowMaximizeParams) -> str:
         return "Maximize the active window"
 
-    def execute(self, params: WindowMaximizeParams, context: ActionContext) -> None:
+    def execute(self, params: WindowMaximizeParams, context: ActionContext, event_payload: dict = {}) -> None:
         context.os_adapter.maximize_active_window()
