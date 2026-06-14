@@ -13,6 +13,40 @@ HAND_CONNECTIONS = [
 ]
 
 
+def draw_tracking_bbox(
+    frame: np.ndarray,
+    x0: float, y0: float, x1: float, y1: float,
+) -> None:
+    """Draw a tracking zone rectangle with corner accents."""
+    h, w = frame.shape[:2]
+    p0 = (int(x0 * w), int(y0 * h))
+    p1 = (int(x1 * w), int(y1 * h))
+    cl = (int((x1 + x0) / 2 * w), int((y1 + y0) / 2 * h))
+
+    # Dim rectangle fill
+    overlay = frame.copy()
+    cv2.rectangle(overlay, p0, p1, (0, 200, 200), -1)
+    cv2.addWeighted(overlay, 0.07, frame, 0.93, 0, frame)
+
+    # Border
+    cv2.rectangle(frame, p0, p1, (0, 220, 220), 1, cv2.LINE_AA)
+
+    # Corner accents
+    corner = max(12, min(p1[0] - p0[0], p1[1] - p0[1]) // 6)
+    color, thick = (0, 240, 240), 2
+    for cx, cy, sx, sy in [
+        (p0[0], p0[1],  1,  1),
+        (p1[0], p0[1], -1,  1),
+        (p0[0], p1[1],  1, -1),
+        (p1[0], p1[1], -1, -1),
+    ]:
+        cv2.line(frame, (cx, cy), (cx + sx * corner, cy), color, thick, cv2.LINE_AA)
+        cv2.line(frame, (cx, cy), (cx, cy + sy * corner), color, thick, cv2.LINE_AA)
+
+    cv2.putText(frame, "TRACK", (p0[0] + 4, p0[1] - 6),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 240, 240), 1, cv2.LINE_AA)
+
+
 def draw_hand_landmarks(frame: np.ndarray, hand_landmarks_list: list[HandLandmarks]) -> None:
     """Draw skeleton overlay on frame in-place."""
     h, w = frame.shape[:2]

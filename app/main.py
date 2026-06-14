@@ -184,6 +184,7 @@ def run_gui(camera_index: int = 0) -> None:
         overlay_queue=overlay_queue,
         on_gesture_event=controller.process_gesture_event,
         on_controller_tick=controller.tick,
+        on_add_binding=controller.add_binding,
         on_save_binding=controller.update_binding,
         on_toggle_binding=controller.toggle_binding,
         on_delete_binding=controller.remove_binding,

@@ -64,6 +64,16 @@ class AppController:
     def get_bindings(self) -> list[Binding]:
         return self._store.all()
 
+    def add_binding(self, raw: dict[str, Any]) -> None:
+        binding = Binding.model_validate(raw)
+        action = self._action_registry.get(binding.action_id)
+        self._store.require_confirmation_for_high_risk(
+            action_id=binding.action_id,
+            risk_level=action.risk_level,
+            confirmation_type=binding.confirmation.type,
+        )
+        self._store.add(binding)
+
     def update_binding(self, binding_id: str, updates: dict[str, Any]) -> None:
         binding = self._store.get(binding_id)
         updated = binding.model_copy(update=updates)

@@ -4,7 +4,9 @@
       "id": "binding_switch_window_next",
       "gesture_id": "swipe_left",
       "action_id": "window.switch",
-      "action_params": {"direction": "next"},
+      "action_params": {
+        "direction": "next"
+      },
       "trigger": "on_release",
       "min_confidence": 0.8,
       "stable_for_ms": 200,
@@ -15,13 +17,16 @@
         "hold_ms": 700,
         "second_gesture_id": null
       },
-      "enabled": true
+      "enabled": true,
+      "exclusive": false
     },
     {
       "id": "binding_switch_window_prev",
       "gesture_id": "swipe_right",
       "action_id": "window.switch",
-      "action_params": {"direction": "previous"},
+      "action_params": {
+        "direction": "previous"
+      },
       "trigger": "on_release",
       "min_confidence": 0.8,
       "stable_for_ms": 200,
@@ -32,7 +37,8 @@
         "hold_ms": 700,
         "second_gesture_id": null
       },
-      "enabled": true
+      "enabled": true,
+      "exclusive": false
     },
     {
       "id": "binding_close_window",
@@ -49,7 +55,8 @@
         "hold_ms": 1200,
         "second_gesture_id": null
       },
-      "enabled": true
+      "enabled": true,
+      "exclusive": false
     },
     {
       "id": "binding_minimize_window",
@@ -66,26 +73,10 @@
         "hold_ms": 700,
         "second_gesture_id": null
       },
-      "enabled": true
+      "enabled": true,
+      "exclusive": false
     },
     {
-      "id": "binding_volume_up",
-      "gesture_id": "pinch",
-      "action_id": "system.volume_change",
-      "action_params": {"delta": 10},
-      "trigger": "on_start",
-      "min_confidence": 0.8,
-      "stable_for_ms": 200,
-      "cooldown_ms": 500,
-      "confirmation": {
-        "type": "none",
-        "timeout_ms": 1500,
-        "hold_ms": 700,
-        "second_gesture_id": null
-      },
-      "enabled": true
-    }
-    ,{
       "id": "binding_mouse_track",
       "gesture_id": "mouse_track",
       "action_id": "mouse.move",

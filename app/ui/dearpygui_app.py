@@ -1,5 +1,7 @@
 from __future__ import annotations
+import json
 import time
+import uuid
 from queue import Queue, Empty
 from typing import Callable, Any
 
@@ -49,6 +51,7 @@ class DearPyGuiApp:
         overlay_queue: Queue[OverlayMessage],
         on_gesture_event: Callable[[GestureEvent], None],
         on_controller_tick: Callable[[], None],
+        on_add_binding: Callable[[dict[str, Any]], None],
         on_save_binding: Callable[[str, dict[str, Any]], None],
         on_toggle_binding: Callable[[str], None],
         on_delete_binding: Callable[[str], None],
@@ -64,6 +67,7 @@ class DearPyGuiApp:
 
         self._on_gesture_event = on_gesture_event
         self._on_controller_tick = on_controller_tick
+        self._on_add_binding = on_add_binding
         self._on_save_binding = on_save_binding
         self._on_toggle_binding = on_toggle_binding
         self._on_delete_binding = on_delete_binding
@@ -76,6 +80,7 @@ class DearPyGuiApp:
         self._overlay_msgs: list[OverlayMessage] = []
         self._action_log: list[ActionLogEntry] = []
         self._edit_binding_id: str | None = None
+        self._is_new_binding = False
         self._bindings_dirty = True   # rebuild table on first tick
 
     # ── Setup ──────────────────────────────────────────────────────────────────
@@ -183,6 +188,7 @@ class DearPyGuiApp:
             with dpg.group(horizontal=True):
                 dpg.add_text("Bindings", color=_COL_HEADER)
                 dpg.add_spacer(width=8)
+                dpg.add_button(label="+ Add", small=True, callback=self._on_add_binding_clicked)
                 dpg.add_button(label="Refresh", small=True, callback=self._on_refresh_bindings)
                 dpg.add_button(label="Save Config", small=True, callback=self._on_save_config_clicked)
 
@@ -271,9 +277,15 @@ class DearPyGuiApp:
 
     def _make_edit_cb(self, binding_id: str) -> Callable:
         def cb() -> None:
+            self._is_new_binding = False
             self._edit_binding_id = binding_id
             self._open_edit_modal(binding_id)
         return cb
+
+    def _on_add_binding_clicked(self) -> None:
+        self._is_new_binding = True
+        self._edit_binding_id = "binding_" + uuid.uuid4().hex[:8]
+        self._open_edit_modal(None)
 
     def _make_delete_cb(self, binding_id: str) -> Callable:
         def cb() -> None:
@@ -284,82 +296,125 @@ class DearPyGuiApp:
             self._bindings_dirty = True
         return cb
 
-    # ── Edit modal ─────────────────────────────────────────────────────────────
+    # ── Edit / Add modal ───────────────────────────────────────────────────────
 
-    def _open_edit_modal(self, binding_id: str) -> None:
-        bindings = self._get_bindings()
-        binding = next((b for b in bindings if b.id == binding_id), None)
-        if binding is None:
-            return
-
+    def _open_edit_modal(self, binding_id: str | None) -> None:
         if dpg.does_item_exist("edit_modal"):
             dpg.delete_item("edit_modal")
 
         gesture_ids = self._get_gesture_ids()
-        action_ids = self._get_action_ids()
+        action_ids  = self._get_action_ids()
+
+        if self._is_new_binding:
+            # Defaults for a brand-new binding
+            g_id     = gesture_ids[0] if gesture_ids else ""
+            a_id     = action_ids[0]  if action_ids  else ""
+            trigger  = "on_start"
+            conf     = 0.75
+            cool     = 500
+            params   = "{}"
+            ctype    = "none"
+            hold_ms  = 700
+            t_ms     = 1500
+            excl     = False
+            enabled  = True
+            title    = f"Add binding: {self._edit_binding_id}"
+        else:
+            bindings = self._get_bindings()
+            b = next((b for b in bindings if b.id == binding_id), None)
+            if b is None:
+                return
+            g_id     = b.gesture_id
+            a_id     = b.action_id
+            trigger  = b.trigger
+            conf     = b.min_confidence
+            cool     = b.cooldown_ms
+            params   = json.dumps(b.action_params)
+            ctype    = b.confirmation.type
+            hold_ms  = b.confirmation.hold_ms
+            t_ms     = b.confirmation.timeout_ms
+            excl     = b.exclusive
+            enabled  = b.enabled
+            title    = f"Edit: {binding_id}"
 
         with dpg.window(
             tag="edit_modal",
-            label=f"Edit: {binding_id}",
+            label=title,
             modal=True,
-            width=420,
-            height=340,
-            pos=[390, 190],
-            no_resize=True,
+            width=460,
+            height=560,
+            pos=[370, 80],
+            no_resize=False,
         ):
             dpg.add_text("Gesture ID:")
-            dpg.add_combo(
-                gesture_ids,
-                default_value=binding.gesture_id,
-                tag="edit_gesture_id",
-                width=220,
-            )
+            dpg.add_combo(gesture_ids, default_value=g_id,    tag="edit_gesture_id", width=240)
 
             dpg.add_text("Action ID:")
-            dpg.add_combo(
-                action_ids,
-                default_value=binding.action_id,
-                tag="edit_action_id",
-                width=220,
+            dpg.add_combo(action_ids,  default_value=a_id,    tag="edit_action_id",  width=240)
+
+            dpg.add_text("Action params (JSON):")
+            dpg.add_input_text(
+                default_value=params,
+                tag="edit_action_params",
+                width=420,
+                height=56,
+                multiline=True,
             )
+            with dpg.group(horizontal=True):
+                dpg.add_button(label="Preview", small=True, callback=self._on_preview_clicked)
+                dpg.add_text("", tag="edit_preview_lbl", color=_COL_ACTION_ID)
+
+            dpg.add_separator()
 
             dpg.add_text("Trigger:")
             dpg.add_combo(
                 ["on_start", "on_hold", "on_release"],
-                default_value=binding.trigger,
+                default_value=trigger,
                 tag="edit_trigger",
                 width=160,
             )
 
             dpg.add_text("Min confidence:")
             dpg.add_slider_float(
-                default_value=binding.min_confidence,
-                min_value=0.0,
-                max_value=1.0,
-                tag="edit_confidence",
-                width=220,
-                format="%.2f",
+                default_value=conf, min_value=0.0, max_value=1.0,
+                tag="edit_confidence", width=240, format="%.2f",
             )
 
             dpg.add_text("Cooldown (ms):")
             dpg.add_input_int(
-                default_value=binding.cooldown_ms,
-                tag="edit_cooldown",
-                width=120,
-                min_value=0,
-                min_clamped=True,
+                default_value=cool, tag="edit_cooldown",
+                width=120, min_value=0, min_clamped=True,
             )
+
+            dpg.add_separator()
 
             dpg.add_text("Confirmation type:")
             dpg.add_combo(
                 ["none", "hold", "repeat_gesture", "second_gesture", "hotkey"],
-                default_value=binding.confirmation.type,
-                tag="edit_confirm_type",
-                width=200,
+                default_value=ctype, tag="edit_confirm_type", width=200,
             )
 
-            dpg.add_text("Enabled:")
-            dpg.add_checkbox(default_value=binding.enabled, tag="edit_enabled")
+            with dpg.group(horizontal=True):
+                dpg.add_text("Hold (ms):")
+                dpg.add_input_int(
+                    default_value=hold_ms, tag="edit_hold_ms",
+                    width=100, min_value=0, min_clamped=True,
+                )
+                dpg.add_spacer(width=12)
+                dpg.add_text("Timeout (ms):")
+                dpg.add_input_int(
+                    default_value=t_ms, tag="edit_timeout_ms",
+                    width=100, min_value=0, min_clamped=True,
+                )
+
+            dpg.add_separator()
+
+            with dpg.group(horizontal=True):
+                dpg.add_text("Enabled:")
+                dpg.add_checkbox(default_value=enabled, tag="edit_enabled")
+                dpg.add_spacer(width=20)
+                dpg.add_text("Exclusive:")
+                dpg.add_checkbox(default_value=excl, tag="edit_exclusive")
 
             dpg.add_separator()
             with dpg.group(horizontal=True):
@@ -368,26 +423,54 @@ class DearPyGuiApp:
 
             dpg.add_text("", tag="edit_error_lbl", color=_COL_ERROR)
 
-    def _on_save_edit_clicked(self) -> None:
-        if self._edit_binding_id is None:
-            return
-
+    def _parse_modal_fields(self) -> dict[str, Any] | str:
+        """Parse all modal fields; return dict on success or error string."""
         from confirmation.confirmation_policy import ConfirmationPolicy
-
-        updates: dict[str, Any] = {
+        try:
+            action_params = json.loads(dpg.get_value("edit_action_params") or "{}")
+        except json.JSONDecodeError as exc:
+            return f"action_params JSON error: {exc}"
+        if not isinstance(action_params, dict):
+            return "action_params must be a JSON object {…}"
+        return {
             "gesture_id":     dpg.get_value("edit_gesture_id"),
             "action_id":      dpg.get_value("edit_action_id"),
             "trigger":        dpg.get_value("edit_trigger"),
             "min_confidence": round(float(dpg.get_value("edit_confidence")), 2),
             "cooldown_ms":    int(dpg.get_value("edit_cooldown")),
+            "action_params":  action_params,
             "enabled":        bool(dpg.get_value("edit_enabled")),
+            "exclusive":      bool(dpg.get_value("edit_exclusive")),
             "confirmation":   ConfirmationPolicy(
-                                  type=dpg.get_value("edit_confirm_type")  # type: ignore[arg-type]
-                              ),
+                type=dpg.get_value("edit_confirm_type"),  # type: ignore[arg-type]
+                hold_ms=int(dpg.get_value("edit_hold_ms")),
+                timeout_ms=int(dpg.get_value("edit_timeout_ms")),
+            ),
         }
 
+    def _on_preview_clicked(self) -> None:
+        fields = self._parse_modal_fields()
+        if isinstance(fields, str):
+            if dpg.does_item_exist("edit_preview_lbl"):
+                dpg.set_value("edit_preview_lbl", fields)
+            return
+        preview = self._preview_action(fields["action_id"], fields["action_params"])
+        if dpg.does_item_exist("edit_preview_lbl"):
+            dpg.set_value("edit_preview_lbl", preview)
+
+    def _on_save_edit_clicked(self) -> None:
+        if self._edit_binding_id is None:
+            return
+        fields = self._parse_modal_fields()
+        if isinstance(fields, str):
+            if dpg.does_item_exist("edit_error_lbl"):
+                dpg.set_value("edit_error_lbl", fields)
+            return
         try:
-            self._on_save_binding(self._edit_binding_id, updates)
+            if self._is_new_binding:
+                self._on_add_binding({"id": self._edit_binding_id, **fields})
+            else:
+                self._on_save_binding(self._edit_binding_id, fields)
             dpg.delete_item("edit_modal")
             self._bindings_dirty = True
         except Exception as exc:

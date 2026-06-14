@@ -46,7 +46,7 @@ class CameraWorker(threading.Thread):
 
     def run(self) -> None:
         from vision.mediapipe_detector import LandmarkDetector
-        from vision.drawing import draw_hand_landmarks
+        from vision.drawing import draw_hand_landmarks, draw_tracking_bbox
 
         try:
             detector = LandmarkDetector(self._model_path)
@@ -89,14 +89,10 @@ class CameraWorker(threading.Thread):
                 if hand_landmarks_list:
                     draw_hand_landmarks(frame, hand_landmarks_list)
 
-                # Pre-process display frame here, off the main thread
-                display = cv2.resize(frame, (_DISPLAY_W, _DISPLAY_H))
-                rgba = cv2.cvtColor(display, cv2.COLOR_BGR2RGBA).astype(np.float32) / 255.0
-                texture_data = rgba.ravel()
-
                 frame_time = time.monotonic()
                 latest_gesture_id: str | None = None
                 latest_confidence: float = 0.0
+                all_events: list[GestureEvent] = []
 
                 for recognizer in self._gesture_registry.all():
                     if recognizer.is_multi_hand:
@@ -106,14 +102,25 @@ class CameraWorker(threading.Thread):
                             e for hand_lm in hand_landmarks_list
                             if (e := recognizer.process(hand_lm, frame_time)) is not None
                         ]
+                    all_events.extend(events)
 
-                    for event in events:
-                        latest_gesture_id = event.gesture_id
-                        latest_confidence = event.confidence
-                        try:
-                            self._gesture_queue.put_nowait(event)
-                        except Full:
-                            pass
+                for event in all_events:
+                    latest_gesture_id = event.gesture_id
+                    latest_confidence = event.confidence
+                    try:
+                        self._gesture_queue.put_nowait(event)
+                    except Full:
+                        pass
+
+                # Draw tracking bbox before preparing the display texture
+                for event in all_events:
+                    if event.gesture_id == "mouse_track" and "bbox" in event.payload:
+                        draw_tracking_bbox(frame, *event.payload["bbox"])
+
+                # Pre-process display frame here, off the main thread
+                display = cv2.resize(frame, (_DISPLAY_W, _DISPLAY_H))
+                rgba = cv2.cvtColor(display, cv2.COLOR_BGR2RGBA).astype(np.float32) / 255.0
+                texture_data = rgba.ravel()
 
                 packet = FramePacket(
                     texture_data=texture_data,
