@@ -1,0 +1,8 @@
+{
+  "camera_index": 0,
+  "target_fps": 30,
+  "detect_preset": "320×240 (default)",
+  "capture_zone_enabled": true,
+  "capture_zone_size": 0.45,
+  "skeleton_only": true
+}

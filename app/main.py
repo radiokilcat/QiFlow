@@ -29,8 +29,9 @@ from confirmation.confirmation_manager import ConfirmationManager
 from os_control.windows_adapter import WindowsAdapter
 from ui.overlay import ConsoleOverlay
 
-CONFIG_PATH = Path(__file__).parent.parent / "config" / "bindings.json"
-MODEL_PATH = Path(__file__).parent.parent / "hand_landmarker.task"
+CONFIG_PATH   = Path(__file__).parent.parent / "config" / "bindings.json"
+SETTINGS_PATH = Path(__file__).parent.parent / "config" / "settings.json"
+MODEL_PATH    = Path(__file__).parent.parent / "hand_landmarker.task"
 
 
 # ── Shared factories ───────────────────────────────────────────────────────────
@@ -52,7 +53,9 @@ def build_action_registry() -> ActionRegistry:
     return registry
 
 
-def build_gesture_registry() -> GestureRegistry:
+def build_gesture_registry(settings=None) -> GestureRegistry:
+    from config.app_settings import AppSettings
+    s = settings or AppSettings()
     registry = GestureRegistry()
     for recognizer in [
         OpenPalmRecognizer(),
@@ -60,7 +63,10 @@ def build_gesture_registry() -> GestureRegistry:
         PinchRecognizer(),
         SwipeLeftRecognizer(),
         SwipeRightRecognizer(),
-        MouseTrackRecognizer(),
+        MouseTrackRecognizer(
+            capture_zone_enabled=s.capture_zone_enabled,
+            capture_zone_size=s.capture_zone_size,
+        ),
     ]:
         registry.register(recognizer)
     return registry
@@ -143,6 +149,12 @@ def run_gui(camera_index: int = 0) -> None:
     from app.ui.dearpygui_app import DearPyGuiApp
     from app.controller import AppController
     from app.worker import CameraWorker
+    from config.app_settings import AppSettings
+
+    # Settings ────────────────────────────────────────────────────────────────
+    settings = AppSettings.load(SETTINGS_PATH)
+    if camera_index != 0:          # CLI --camera= overrides settings
+        settings.camera_index = camera_index
 
     # Queues ──────────────────────────────────────────────────────────────────
     frame_queue: Queue[FramePacket] = Queue(maxsize=1)
@@ -152,7 +164,7 @@ def run_gui(camera_index: int = 0) -> None:
     # Core objects ────────────────────────────────────────────────────────────
     os_adapter = WindowsAdapter()
     action_registry = build_action_registry()
-    gesture_registry = build_gesture_registry()
+    gesture_registry = build_gesture_registry(settings)
     queue_overlay = QueueOverlay(overlay_queue)
 
     controller = AppController(
@@ -163,19 +175,42 @@ def run_gui(camera_index: int = 0) -> None:
         overlay=queue_overlay,
     )
 
-    # Camera worker (daemon — dies when main thread exits) ────────────────────
-    if MODEL_PATH.exists():
-        worker = CameraWorker(
-            camera_index=camera_index,
+    # Camera worker ───────────────────────────────────────────────────────────
+    worker_ref: list[CameraWorker | None] = [None]
+
+    def start_worker() -> None:
+        if not MODEL_PATH.exists():
+            print(f"[GUI] hand_landmarker.task not found — running without camera")
+            return
+        w = CameraWorker(
+            settings=settings,
             model_path=str(MODEL_PATH),
             gesture_registry=gesture_registry,
             frame_queue=frame_queue,
             gesture_queue=gesture_queue,
         )
-        worker.start()
-    else:
-        print(f"[GUI] hand_landmarker.task not found at {MODEL_PATH} — running without camera")
-        worker = None
+        w.start()
+        worker_ref[0] = w
+
+    def restart_camera(new_index: int) -> None:
+        settings.camera_index = new_index
+        old = worker_ref[0]
+        if old is not None:
+            old.stop()
+            old.join(timeout=2.0)
+        start_worker()
+
+    def save_settings(raw: dict) -> None:
+        for k, v in raw.items():
+            setattr(settings, k, v)
+        settings.save(SETTINGS_PATH)
+        try:
+            rec = gesture_registry.get("mouse_track")
+            rec.update_settings(settings.capture_zone_enabled, settings.capture_zone_size)  # type: ignore[attr-defined]
+        except KeyError:
+            pass
+
+    start_worker()
 
     # DearPyGui app ───────────────────────────────────────────────────────────
     app = DearPyGuiApp(
@@ -193,15 +228,19 @@ def run_gui(camera_index: int = 0) -> None:
         get_action_ids=controller.get_action_ids,
         get_gesture_ids=controller.get_gesture_ids,
         preview_action=controller.preview_action,
+        settings=settings,
+        on_save_settings=save_settings,
+        on_restart_camera=restart_camera,
     )
 
     app.setup()
     try:
         app.run()
     finally:
-        if worker is not None:
-            worker.stop()
-            worker.join(timeout=2.0)
+        w = worker_ref[0]
+        if w is not None:
+            w.stop()
+            w.join(timeout=2.0)
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────

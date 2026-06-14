@@ -10,6 +10,7 @@ import dearpygui.dearpygui as dpg
 
 from gestures.base import GestureEvent
 from .view_models import FramePacket, OverlayMessage, ActionLogEntry
+from config.app_settings import AppSettings, DETECT_PRESET_LABELS
 
 # ── Layout constants ───────────────────────────────────────────────────────────
 _CAMERA_W = 640
@@ -60,11 +61,17 @@ class DearPyGuiApp:
         get_action_ids: Callable[[], list[str]],
         get_gesture_ids: Callable[[], list[str]],
         preview_action: Callable[[str, dict[str, Any]], str],
+        settings: AppSettings,
+        on_save_settings: Callable[[dict[str, Any]], None],
+        on_restart_camera: Callable[[int], None],
     ) -> None:
         self._frame_q = frame_queue
         self._gesture_q = gesture_queue
         self._overlay_q = overlay_queue
 
+        self._settings = settings
+        self._on_save_settings = on_save_settings
+        self._on_restart_camera = on_restart_camera
         self._on_gesture_event = on_gesture_event
         self._on_controller_tick = on_controller_tick
         self._on_add_binding = on_add_binding
@@ -151,6 +158,8 @@ class DearPyGuiApp:
                     callback=self._on_save_config_clicked,
                     shortcut="Ctrl+S",
                 )
+                dpg.add_separator()
+                dpg.add_menu_item(label="Settings…", callback=self._open_settings_modal)
                 dpg.add_separator()
                 dpg.add_menu_item(label="Quit", callback=dpg.stop_dearpygui)
             with dpg.menu(label="View"):
@@ -476,6 +485,114 @@ class DearPyGuiApp:
         except Exception as exc:
             if dpg.does_item_exist("edit_error_lbl"):
                 dpg.set_value("edit_error_lbl", f"Error: {exc}")
+
+    # ── Settings modal ─────────────────────────────────────────────────────────
+
+    def _open_settings_modal(self) -> None:
+        if dpg.does_item_exist("settings_modal"):
+            dpg.delete_item("settings_modal")
+
+        s = self._settings
+        with dpg.window(
+            tag="settings_modal",
+            label="Settings",
+            modal=True,
+            width=360,
+            height=310,
+            pos=[420, 220],
+            no_resize=False,
+        ):
+            dpg.add_text("Camera", color=_COL_HEADER)
+            with dpg.group(horizontal=True):
+                dpg.add_text("Camera index:")
+                dpg.add_input_int(
+                    default_value=s.camera_index,
+                    tag="cfg_camera_index",
+                    width=70,
+                    min_value=0,
+                    min_clamped=True,
+                )
+                dpg.add_button(
+                    label="Restart",
+                    small=True,
+                    callback=self._on_restart_camera_clicked,
+                )
+
+            dpg.add_separator()
+            dpg.add_text("Performance", color=_COL_HEADER)
+
+            with dpg.group(horizontal=True):
+                dpg.add_text("Target FPS:")
+                dpg.add_slider_int(
+                    default_value=s.target_fps,
+                    tag="cfg_fps",
+                    min_value=10,
+                    max_value=60,
+                    width=180,
+                )
+
+            dpg.add_text("Detection resolution:")
+            dpg.add_combo(
+                DETECT_PRESET_LABELS,
+                default_value=s.detect_preset,
+                tag="cfg_detect_preset",
+                width=240,
+            )
+
+            with dpg.group(horizontal=True):
+                dpg.add_text("Skeleton only:")
+                dpg.add_checkbox(default_value=s.skeleton_only, tag="cfg_skeleton_only")
+
+            dpg.add_separator()
+            dpg.add_text("Capture zone", color=_COL_HEADER)
+
+            with dpg.group(horizontal=True):
+                dpg.add_text("Enabled:")
+                dpg.add_checkbox(default_value=s.capture_zone_enabled, tag="cfg_zone_enabled")
+
+            with dpg.group(horizontal=True):
+                dpg.add_text("Size (% of frame):")
+                dpg.add_slider_float(
+                    default_value=s.capture_zone_size,
+                    tag="cfg_zone_size",
+                    min_value=0.15,
+                    max_value=0.85,
+                    width=160,
+                    format="%.2f",
+                )
+
+            dpg.add_separator()
+            with dpg.group(horizontal=True):
+                dpg.add_button(label="Save", callback=self._on_save_settings_clicked)
+                dpg.add_button(label="Close", callback=lambda: dpg.delete_item("settings_modal"))
+
+            dpg.add_text("", tag="cfg_status_lbl", color=_COL_GESTURE)
+
+    def _on_restart_camera_clicked(self) -> None:
+        idx = int(dpg.get_value("cfg_camera_index"))
+        try:
+            self._on_restart_camera(idx)
+            if dpg.does_item_exist("cfg_status_lbl"):
+                dpg.set_value("cfg_status_lbl", f"Camera {idx} restarted")
+        except Exception as exc:
+            if dpg.does_item_exist("cfg_status_lbl"):
+                dpg.set_value("cfg_status_lbl", f"Error: {exc}")
+
+    def _on_save_settings_clicked(self) -> None:
+        try:
+            self._on_save_settings({
+                "camera_index":        int(dpg.get_value("cfg_camera_index")),
+                "target_fps":          int(dpg.get_value("cfg_fps")),
+                "detect_preset":       dpg.get_value("cfg_detect_preset"),
+                "capture_zone_enabled": bool(dpg.get_value("cfg_zone_enabled")),
+                "capture_zone_size":    round(float(dpg.get_value("cfg_zone_size")), 2),
+                "skeleton_only":        bool(dpg.get_value("cfg_skeleton_only")),
+            })
+            if dpg.does_item_exist("cfg_status_lbl"):
+                dpg.set_value("cfg_status_lbl", "Saved")
+        except Exception as exc:
+            if dpg.does_item_exist("cfg_status_lbl"):
+                dpg.set_value("cfg_status_lbl", f"Error: {exc}")
 
     # ── Callbacks ──────────────────────────────────────────────────────────────
 

@@ -9,11 +9,9 @@ import numpy as np
 from gestures.registry import GestureRegistry
 from gestures.base import GestureEvent
 from app.ui.view_models import FramePacket
+from config.app_settings import AppSettings
 
-_TARGET_FPS = 30
-_FRAME_INTERVAL = 1.0 / _TARGET_FPS
-_DISPLAY_W, _DISPLAY_H = 640, 360   # texture size for DearPyGui
-_DETECT_W, _DETECT_H = 320, 240     # resolution passed to MediaPipe
+_DISPLAY_W, _DISPLAY_H = 640, 360   # texture size for DearPyGui (fixed)
 
 
 class CameraWorker(threading.Thread):
@@ -27,14 +25,14 @@ class CameraWorker(threading.Thread):
 
     def __init__(
         self,
-        camera_index: int,
+        settings: AppSettings,
         model_path: str,
         gesture_registry: GestureRegistry,
         frame_queue: Queue[FramePacket],
         gesture_queue: Queue[GestureEvent],
     ) -> None:
         super().__init__(daemon=True, name="CameraWorker")
-        self._camera_index = camera_index
+        self._settings = settings
         self._model_path = model_path
         self._gesture_registry = gesture_registry
         self._frame_queue = frame_queue
@@ -43,6 +41,13 @@ class CameraWorker(threading.Thread):
 
     def stop(self) -> None:
         self._stop_event.set()
+
+    def _mouse_track_bbox(self) -> tuple | None:
+        try:
+            rec = self._gesture_registry.get("mouse_track")
+            return rec.current_bbox  # type: ignore[attr-defined]
+        except (KeyError, AttributeError):
+            return None
 
     def run(self) -> None:
         from vision.mediapipe_detector import LandmarkDetector
@@ -55,12 +60,13 @@ class CameraWorker(threading.Thread):
             print(f"[CameraWorker] MediaPipe init failed: {exc}")
             return
 
-        cap = cv2.VideoCapture(self._camera_index, cv2.CAP_DSHOW)
+        cam_idx = self._settings.camera_index
+        cap = cv2.VideoCapture(cam_idx, cv2.CAP_DSHOW)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
         if not cap.isOpened():
-            print(f"[CameraWorker] Cannot open camera {self._camera_index}")
+            print(f"[CameraWorker] Cannot open camera {cam_idx}")
             detector.stop()
             return
 
@@ -78,13 +84,17 @@ class CameraWorker(threading.Thread):
                 frame = cv2.flip(frame, 1)
                 timestamp_ms = int((time.monotonic() - start_time) * 1000)
 
-                # Detect at reduced resolution — much faster than full-res
-                small = cv2.resize(frame, (_DETECT_W, _DETECT_H))
+                # Detect at configured resolution — read each frame for live updates
+                detect_size = self._settings.detect_size
+                small = cv2.resize(frame, detect_size)
                 rgb_small = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
                 try:
                     hand_landmarks_list = detector.detect(rgb_small, timestamp_ms)
                 except Exception:
                     hand_landmarks_list = []
+
+                if self._settings.skeleton_only:
+                    frame = np.zeros_like(frame)
 
                 if hand_landmarks_list:
                     draw_hand_landmarks(frame, hand_landmarks_list)
@@ -112,10 +122,11 @@ class CameraWorker(threading.Thread):
                     except Full:
                         pass
 
-                # Draw tracking bbox before preparing the display texture
-                for event in all_events:
-                    if event.gesture_id == "mouse_track" and "bbox" in event.payload:
-                        draw_tracking_bbox(frame, *event.payload["bbox"])
+                # Draw capture zone whenever two hands are present (if enabled)
+                if hand_landmarks_list and self._settings.capture_zone_enabled:
+                    bbox = self._mouse_track_bbox()
+                    if bbox is not None:
+                        draw_tracking_bbox(frame, *bbox)
 
                 # Pre-process display frame here, off the main thread
                 display = cv2.resize(frame, (_DISPLAY_W, _DISPLAY_H))
@@ -140,10 +151,11 @@ class CameraWorker(threading.Thread):
                 except Full:
                     pass
 
-                # FPS cap — sleep the remaining time in the frame interval
+                # FPS cap — read interval each frame for live updates
                 elapsed = time.monotonic() - t0
-                if elapsed < _FRAME_INTERVAL:
-                    time.sleep(_FRAME_INTERVAL - elapsed)
+                remaining = self._settings.frame_interval - elapsed
+                if remaining > 0:
+                    time.sleep(remaining)
 
         finally:
             cap.release()
