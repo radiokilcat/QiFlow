@@ -102,17 +102,25 @@ class CameraWorker(threading.Thread):
                 frame_time = time.monotonic()
                 latest_gesture_id: str | None = None
                 latest_confidence: float = 0.0
+                latest_hand_side: str | None = None
                 all_events: list[GestureEvent] = []
+
+                # After cv2.flip: handedness "Right" = user's left, "Left" = user's right
+                _USER_SIDE = {"Right": "left", "Left": "right"}
 
                 for recognizer in self._gesture_registry.all():
                     if recognizer.is_multi_hand:
-                        events = recognizer.process_all(hand_landmarks_list, frame_time)
+                        all_events.extend(
+                            recognizer.process_all(hand_landmarks_list, frame_time)
+                        )
                     else:
-                        events = [
-                            e for hand_lm in hand_landmarks_list
-                            if (e := recognizer.process(hand_lm, frame_time)) is not None
-                        ]
-                    all_events.extend(events)
+                        for hand_lm in hand_landmarks_list:
+                            e = recognizer.process(hand_lm, frame_time)
+                            if e is not None:
+                                all_events.append(e)
+                                latest_hand_side = _USER_SIDE.get(
+                                    getattr(hand_lm, "handedness", ""), None
+                                )
 
                 for event in all_events:
                     latest_gesture_id = event.gesture_id
@@ -139,6 +147,7 @@ class CameraWorker(threading.Thread):
                     gesture_id=latest_gesture_id,
                     confidence=latest_confidence,
                     has_hands=bool(hand_landmarks_list),
+                    hand_side=latest_hand_side,
                 )
 
                 # Replace stale frame — drain first so maxsize=1 never blocks

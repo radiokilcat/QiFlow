@@ -20,6 +20,7 @@ class GestureRecognizer(ABC):
     gesture_id: str
     name: str
     is_multi_hand: bool = False  # if True, process_all() is called instead of process()
+    enabled: bool = True
 
     @abstractmethod
     def process(self, landmarks: Any, frame_time: float) -> GestureEvent | None:

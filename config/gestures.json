@@ -1,0 +1,42 @@
+{
+  "poses": [
+    {
+      "type": "fist",
+      "hand": "any",
+      "enabled": false
+    },
+    {
+      "type": "open_palm",
+      "hand": "any",
+      "enabled": false
+    },
+    {
+      "type": "pinch",
+      "hand": "any",
+      "enabled": true
+    },
+    {
+      "type": "point",
+      "hand": "any",
+      "enabled": true
+    }
+  ],
+  "movements": [
+    {
+      "type": "swipe_left"
+    },
+    {
+      "type": "swipe_right"
+    },
+    {
+      "type": "mouse_track",
+      "activator_hand": "left",
+      "activator_pose": "point",
+      "activation_type": "toggle"
+    },
+    {
+      "type": "tilt_scroll",
+      "hand": "left"
+    }
+  ]
+}

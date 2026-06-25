@@ -41,42 +41,6 @@
       "exclusive": false
     },
     {
-      "id": "binding_close_window",
-      "gesture_id": "fist",
-      "action_id": "window.close_active",
-      "action_params": {},
-      "trigger": "on_hold",
-      "min_confidence": 0.85,
-      "stable_for_ms": 500,
-      "cooldown_ms": 2000,
-      "confirmation": {
-        "type": "hold",
-        "timeout_ms": 2500,
-        "hold_ms": 1200,
-        "second_gesture_id": null
-      },
-      "enabled": true,
-      "exclusive": false
-    },
-    {
-      "id": "binding_minimize_window",
-      "gesture_id": "open_palm",
-      "action_id": "window.minimize_active",
-      "action_params": {},
-      "trigger": "on_start",
-      "min_confidence": 0.75,
-      "stable_for_ms": 300,
-      "cooldown_ms": 1000,
-      "confirmation": {
-        "type": "none",
-        "timeout_ms": 1500,
-        "hold_ms": 700,
-        "second_gesture_id": null
-      },
-      "enabled": true,
-      "exclusive": false
-    },
-    {
       "id": "binding_mouse_track",
       "gesture_id": "mouse_track",
       "action_id": "mouse.move",
@@ -93,6 +57,46 @@
       },
       "enabled": true,
       "exclusive": true
+    },
+    {
+      "id": "binding_tilt_scroll_up",
+      "gesture_id": "tilt_scroll_up",
+      "action_id": "mouse.scroll",
+      "action_params": {
+        "delta": 3
+      },
+      "trigger": "on_hold",
+      "min_confidence": 0.8,
+      "stable_for_ms": 0,
+      "cooldown_ms": 0,
+      "confirmation": {
+        "type": "none",
+        "timeout_ms": 1500,
+        "hold_ms": 700,
+        "second_gesture_id": null
+      },
+      "enabled": true,
+      "exclusive": false
+    },
+    {
+      "id": "binding_tilt_scroll_down",
+      "gesture_id": "tilt_scroll_down",
+      "action_id": "mouse.scroll",
+      "action_params": {
+        "delta": -3
+      },
+      "trigger": "on_hold",
+      "min_confidence": 0.77,
+      "stable_for_ms": 0,
+      "cooldown_ms": 0,
+      "confirmation": {
+        "type": "none",
+        "timeout_ms": 1500,
+        "hold_ms": 700,
+        "second_gesture_id": null
+      },
+      "enabled": true,
+      "exclusive": false
     }
   ]
 }

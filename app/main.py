@@ -16,11 +16,7 @@ from actions.mouse_actions import MouseClickAction, MouseScrollAction, MouseMove
 from actions.system_actions import VolumeChangeAction
 
 from gestures.registry import GestureRegistry
-from gestures.recognizers.open_palm import OpenPalmRecognizer
-from gestures.recognizers.fist import FistRecognizer
-from gestures.recognizers.pinch import PinchRecognizer
-from gestures.recognizers.swipe import SwipeLeftRecognizer, SwipeRightRecognizer
-from gestures.recognizers.mouse_track import MouseTrackRecognizer
+from gestures.gesture_store import GestureStore
 from gestures.base import GestureEvent
 
 from bindings.binding_store import BindingStore
@@ -31,6 +27,7 @@ from ui.overlay import ConsoleOverlay
 
 CONFIG_PATH   = Path(__file__).parent.parent / "config" / "bindings.json"
 SETTINGS_PATH = Path(__file__).parent.parent / "config" / "settings.json"
+GESTURES_PATH = Path(__file__).parent.parent / "config" / "gestures.json"
 MODEL_PATH    = Path(__file__).parent.parent / "hand_landmarker.task"
 
 
@@ -54,22 +51,9 @@ def build_action_registry() -> ActionRegistry:
 
 
 def build_gesture_registry(settings=None) -> GestureRegistry:
-    from config.app_settings import AppSettings
-    s = settings or AppSettings()
-    registry = GestureRegistry()
-    for recognizer in [
-        OpenPalmRecognizer(),
-        FistRecognizer(),
-        PinchRecognizer(),
-        SwipeLeftRecognizer(),
-        SwipeRightRecognizer(),
-        MouseTrackRecognizer(
-            capture_zone_enabled=s.capture_zone_enabled,
-            capture_zone_size=s.capture_zone_size,
-        ),
-    ]:
-        registry.register(recognizer)
-    return registry
+    store = GestureStore(GESTURES_PATH)
+    store.load()
+    return store.build_registry(settings)
 
 
 # ── Demo mode (no GUI, no camera) ─────────────────────────────────────────────
@@ -164,7 +148,11 @@ def run_gui(camera_index: int = 0) -> None:
     # Core objects ────────────────────────────────────────────────────────────
     os_adapter = WindowsAdapter()
     action_registry = build_action_registry()
-    gesture_registry = build_gesture_registry(settings)
+
+    gesture_store = GestureStore(GESTURES_PATH)
+    gesture_store.load()
+    gesture_registry = gesture_store.build_registry(settings)
+
     queue_overlay = QueueOverlay(overlay_queue)
 
     controller = AppController(
@@ -210,6 +198,43 @@ def run_gui(camera_index: int = 0) -> None:
         except KeyError:
             pass
 
+    def get_gestures() -> list[dict]:
+        return [p.model_dump() for p in gesture_store.poses]
+
+    def save_gestures(updates: list[dict]) -> None:
+        enabled_map = {(u["type"], u.get("hand", "any")): u["enabled"] for u in updates}
+        updated = [
+            p.model_copy(update={"enabled": enabled_map.get((p.type, p.hand), True)})
+            for p in gesture_store.poses
+        ]
+        gesture_store.set_poses(updated)
+        gesture_store.save()
+        for p in updated:
+            gid = p.type if p.hand == "any" else f"{p.type}_{p.hand}"
+            gesture_registry.set_enabled(gid, p.enabled)
+
+    def get_movements() -> list[dict]:
+        return [m.model_dump() for m in gesture_store.movements]
+
+    def save_movement(mtype: str, fields: dict) -> None:
+        updated = [
+            m.model_copy(update=fields) if m.type == mtype else m  # type: ignore[union-attr]
+            for m in gesture_store.movements
+        ]
+        gesture_store.set_movements(updated)
+        gesture_store.save()
+        # Apply changes to the live recognizer without restart
+        if mtype == "mouse_track":
+            try:
+                rec = gesture_registry.get("mouse_track")
+                rec.update_activator(  # type: ignore[union-attr]
+                    activator_hand=fields.get("activator_hand", "left"),
+                    activator_pose=fields.get("activator_pose", "fist"),
+                    activation_type=fields.get("activation_type", "constant"),
+                )
+            except KeyError:
+                pass
+
     start_worker()
 
     # DearPyGui app ───────────────────────────────────────────────────────────
@@ -231,6 +256,10 @@ def run_gui(camera_index: int = 0) -> None:
         settings=settings,
         on_save_settings=save_settings,
         on_restart_camera=restart_camera,
+        get_movements=get_movements,
+        save_movement=save_movement,
+        get_gestures=get_gestures,
+        save_gestures=save_gestures,
     )
 
     app.setup()

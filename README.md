@@ -31,10 +31,25 @@ CameraSource → LandmarkDetector → GestureRecognizers
 - All action calls flow through `ActionDispatcher`
 - Action params are validated via Pydantic models
 
-## Running the demo
+## Running
 
+Install dependencies:
 ```bash
 pip install -r requirements.txt
+```
+
+GUI mode (camera + DearPyGui interface):
+```bash
+python -m app.main --gui
+```
+
+Select a specific camera:
+```bash
+python -m app.main --gui --camera=1
+```
+
+Demo mode (no camera, simulated gesture events):
+```bash
 python -m app.main
 ```
 

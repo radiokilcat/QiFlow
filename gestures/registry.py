@@ -18,7 +18,11 @@ class GestureRegistry:
         return self._recognizers[gesture_id]
 
     def all(self) -> Iterator[GestureRecognizer]:
-        return iter(self._recognizers.values())
+        return (r for r in self._recognizers.values() if getattr(r, "enabled", True))
+
+    def set_enabled(self, gesture_id: str, enabled: bool) -> None:
+        if gesture_id in self._recognizers:
+            self._recognizers[gesture_id].enabled = enabled
 
     def ids(self) -> list[str]:
         return list(self._recognizers.keys())

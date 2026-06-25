@@ -19,6 +19,7 @@ class FramePacket:
     gesture_id: str | None = None
     confidence: float = 0.0
     has_hands: bool = False
+    hand_side: str | None = None  # "left" | "right" | None for multi-hand / unknown
 
 
 @dataclass
